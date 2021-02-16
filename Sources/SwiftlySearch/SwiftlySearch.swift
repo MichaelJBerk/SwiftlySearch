@@ -20,13 +20,17 @@
 import SwiftUI
 import Combine
 
+extension Notification.Name {
+	public static let searchBarTextUpdatedNotification = Notification.Name("searchBarTextUpdatedNotification")
+}
+
 public extension View {
-    func navigationBarSearch(_ searchText: Binding<String>, placeholder: String? = nil, hidesNavigationBarDuringPresentation: Bool = true, hidesSearchBarWhenScrolling: Bool = true, cancelClicked: @escaping () -> Void = {}, searchClicked: @escaping () -> Void = {}) -> some View {
-        return overlay(SearchBar<AnyView>(text: searchText, placeholder: placeholder, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, hidesSearchBarWhenScrolling: hidesSearchBarWhenScrolling, cancelClicked: cancelClicked, searchClicked: searchClicked).frame(width: 0, height: 0))
+	func navigationBarSearch(_ searchText: Binding<String>, placeholder: String? = nil, isEditing: Binding<Bool>? = nil, hidesNavigationBarDuringPresentation: Bool = true, hidesSearchBarWhenScrolling: Bool = true, cancelClicked: @escaping () -> Void = {}, searchClicked: @escaping () -> Void = {}) -> some View {
+		return overlay(SearchBar<AnyView>(text: searchText, placeholder: placeholder, isEditing: isEditing, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, hidesSearchBarWhenScrolling: hidesSearchBarWhenScrolling, cancelClicked: cancelClicked, searchClicked: searchClicked).frame(width: 0, height: 0))
     }
 
-    func navigationBarSearch<ResultContent: View>(_ searchText: Binding<String>, placeholder: String? = nil, hidesNavigationBarDuringPresentation: Bool = true, hidesSearchBarWhenScrolling: Bool = true, cancelClicked: @escaping () -> Void = {}, searchClicked: @escaping () -> Void = {}, @ViewBuilder resultContent: @escaping (String) -> ResultContent) -> some View {
-        return overlay(SearchBar(text: searchText, placeholder: placeholder, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, hidesSearchBarWhenScrolling: hidesSearchBarWhenScrolling, cancelClicked: cancelClicked, searchClicked: searchClicked, resultContent: resultContent).frame(width: 0, height: 0))
+	func navigationBarSearch<ResultContent: View>(_ searchText: Binding<String>, placeholder: String? = nil, isEditing: Binding<Bool>? = nil, hidesNavigationBarDuringPresentation: Bool = true, hidesSearchBarWhenScrolling: Bool = true, cancelClicked: @escaping () -> Void = {}, searchClicked: @escaping () -> Void = {}, @ViewBuilder resultContent: @escaping (String) -> ResultContent) -> some View {
+		return overlay(SearchBar(text: searchText, placeholder: placeholder, isEditing: isEditing, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, hidesSearchBarWhenScrolling: hidesSearchBarWhenScrolling, cancelClicked: cancelClicked, searchClicked: searchClicked, resultContent: resultContent).frame(width: 0, height: 0))
     }
 }
 
@@ -34,13 +38,14 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
     @Binding
     var text: String
     let placeholder: String?
+	var isEditing: Binding<Bool>?
     let hidesNavigationBarDuringPresentation: Bool
     let hidesSearchBarWhenScrolling: Bool
     let cancelClicked: () -> Void
     let searchClicked: () -> Void
     let resultContent: (String) -> ResultContent?
 
-    init(text: Binding<String>, placeholder: String?, hidesNavigationBarDuringPresentation: Bool, hidesSearchBarWhenScrolling: Bool, cancelClicked: @escaping () -> Void, searchClicked: @escaping () -> Void, @ViewBuilder resultContent: @escaping (String) -> ResultContent? = { _ in nil }) {
+	init(text: Binding<String>, placeholder: String?, isEditing: Binding<Bool>? = nil, hidesNavigationBarDuringPresentation: Bool, hidesSearchBarWhenScrolling: Bool, cancelClicked: @escaping () -> Void, searchClicked: @escaping () -> Void, @ViewBuilder resultContent: @escaping (String) -> ResultContent? = { _ in nil }) {
         self._text = text
         self.placeholder = placeholder
         self.hidesNavigationBarDuringPresentation = hidesNavigationBarDuringPresentation
@@ -48,6 +53,7 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
         self.cancelClicked = cancelClicked
         self.searchClicked = searchClicked
         self.resultContent = resultContent
+		self.isEditing = isEditing
     }
 
     func makeUIViewController(context: Context) -> SearchBarWrapperController {
@@ -67,17 +73,18 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        return Coordinator(text: $text, placeholder: placeholder, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, resultContent: resultContent, cancelClicked: cancelClicked, searchClicked: searchClicked)
+        return Coordinator(text: $text, placeholder: placeholder, isEditing: isEditing, hidesNavigationBarDuringPresentation: hidesNavigationBarDuringPresentation, resultContent: resultContent, cancelClicked: cancelClicked, searchClicked: searchClicked)
     }
 
     class Coordinator: NSObject, UISearchResultsUpdating, UISearchBarDelegate {
         @Binding
         var text: String
+		var isEditing: Binding<Bool>?
         var cancelClicked: () -> Void
         var searchClicked: () -> Void
         let searchController: UISearchController
 
-        init(text: Binding<String>, placeholder: String?, hidesNavigationBarDuringPresentation: Bool, resultContent: (String) -> ResultContent?, cancelClicked: @escaping () -> Void, searchClicked: @escaping () -> Void) {
+		init(text: Binding<String>, placeholder: String?, isEditing: Binding<Bool>? = nil, hidesNavigationBarDuringPresentation: Bool, resultContent: (String) -> ResultContent?, cancelClicked: @escaping () -> Void, searchClicked: @escaping () -> Void) {
             self._text = text
             self.cancelClicked = cancelClicked
             self.searchClicked = searchClicked
@@ -85,7 +92,7 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
             let resultView = resultContent(text.wrappedValue)
             let searchResultController = resultView.map { UIHostingController(rootView: $0) }
             self.searchController = UISearchController(searchResultsController: searchResultController)
-
+			self.isEditing = isEditing
             super.init()
 
             searchController.searchResultsUpdater = self
@@ -99,7 +106,6 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
 
         func update(placeholder: String?, cancelClicked: @escaping () -> Void, searchClicked: @escaping () -> Void) {
             searchController.searchBar.placeholder = placeholder
-
             self.cancelClicked = cancelClicked
             self.searchClicked = searchClicked
         }
@@ -111,7 +117,9 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
             guard text != self.text else { return }
             DispatchQueue.main.async {
                 self.text = text
+				
             }
+			
         }
 
 
@@ -122,6 +130,16 @@ struct SearchBar<ResultContent: View>: UIViewControllerRepresentable {
         func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
             self.searchClicked()
         }
+		func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+			NotificationCenter.default.post(name: .searchBarTextUpdatedNotification, object: searchController.searchBar)
+		}
+		
+		func searchBarTextDidBeginEditing(_ searchBar: UISearchBar) {
+			isEditing?.wrappedValue = true
+		}
+		func searchBarTextDidEndEditing(_ searchBar: UISearchBar) {
+			isEditing?.wrappedValue = false
+		}
     }
 
     class SearchBarWrapperController: UIViewController {
